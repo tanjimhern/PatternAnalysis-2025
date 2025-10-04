@@ -8,71 +8,99 @@ from torch.optim.lr_scheduler import CosineAnnealingLR
 import time
 import copy
 
-def train_one_epoch(model, train_loader, criterion, optimizer, device):
+def train_model(model, train_loader, val_loader, criterion, optimizer, scheduler, 
+                num_epochs, device, patience=10, save_path='best_model.pth'):
     """
-    Train for one epoch
+    Main training loop with early stopping
+    
+    Args:
+        model: ConvNeXt model
+        train_loader: Training data loader
+        val_loader: Validation data loader
+        criterion: Loss function
+        optimizer: Optimizer
+        scheduler: Learning rate scheduler
+        num_epochs: Maximum number of epochs
+        device: Device to train on
+        patience: Early stopping patience
+        save_path: Path to save best model
     
     Returns:
-        avg_loss: Average training loss
-        accuracy: Training accuracy
+        history: Dictionary containing training history
+        best_model: Best model state dict
     """
-    model.train()
-    running_loss = 0.0
-    correct = 0
-    total = 0
+    since = time.time()
     
-    for images, labels in train_loader:
-        images = images.to(device)
-        labels = labels.to(device)
+    best_model_wts = copy.deepcopy(model.state_dict())
+    best_acc = 0.0
+    best_epoch = 0
+    epochs_no_improve = 0
+    
+    # History tracking
+    history = {
+        'train_loss': [],
+        'train_acc': [],
+        'val_loss': [],
+        'val_acc': [],
+        'lr': []
+    }
+    
+    print(f"Training on {device}")
+    print(f"{'Epoch':<8} {'Train Loss':<12} {'Train Acc':<12} {'Val Loss':<12} {'Val Acc':<12} {'LR':<12}")
+    print("-" * 80)
+    
+    for epoch in range(num_epochs):
+        # Training phase
+        train_loss, train_acc = train_one_epoch(model, train_loader, criterion, optimizer, device)
         
-        # Forward pass
-        optimizer.zero_grad()
-        outputs = model(images)
-        loss = criterion(outputs, labels)
+        # Validation phase
+        val_loss, val_acc = validate(model, val_loader, criterion, device)
         
-        # Backward pass
-        loss.backward()
-        optimizer.step()
+        # Learning rate scheduler step
+        current_lr = optimizer.param_groups[0]['lr']
+        if scheduler is not None:
+            scheduler.step()
         
-        # Statistics
-        running_loss += loss.item() * images.size(0)
-        _, predicted = torch.max(outputs.data, 1)
-        total += labels.size(0)
-        correct += (predicted == labels).sum().item()
-    
-    avg_loss = running_loss / total
-    accuracy = correct / total
-    
-    return avg_loss, accuracy
-
-
-def validate(model, val_loader, criterion, device):
-    """
-    Validate the model
-    
-    Returns:
-        avg_loss: Average validation loss
-        accuracy: Validation accuracy
-    """
-    model.eval()
-    running_loss = 0.0
-    correct = 0
-    total = 0
-    
-    with torch.no_grad():
-        for images, labels in val_loader:
-            images = images.to(device)
-            labels = labels.to(device)
+        # Save history
+        history['train_loss'].append(train_loss)
+        history['train_acc'].append(train_acc)
+        history['val_loss'].append(val_loss)
+        history['val_acc'].append(val_acc)
+        history['lr'].append(current_lr)
+        
+        # Print progress
+        print(f"{epoch+1:<8} {train_loss:<12.4f} {train_acc:<12.4f} {val_loss:<12.4f} {val_acc:<12.4f} {current_lr:<12.6f}")
+        
+        # Check if best model
+        if val_acc > best_acc:
+            best_acc = val_acc
+            best_epoch = epoch + 1
+            best_model_wts = copy.deepcopy(model.state_dict())
+            epochs_no_improve = 0
             
-            outputs = model(images)
-            loss = criterion(outputs, labels)
-            
-            running_loss += loss.item() * images.size(0)
-            _, predicted = torch.max(outputs.data, 1)
-            total += labels.size(0)
-            correct += (predicted == labels).sum().item()
+            # Save best model
+            torch.save({
+                'epoch': epoch,
+                'model_state_dict': model.state_dict(),
+                'optimizer_state_dict': optimizer.state_dict(),
+                'val_acc': val_acc,
+                'val_loss': val_loss,
+            }, save_path)
+            print(f"    → New best model saved! Val Acc: {val_acc:.4f}")
+        else:
+            epochs_no_improve += 1
+        
+        # Early stopping check
+        if epochs_no_improve >= patience:
+            print(f"\nEarly stopping triggered after {epoch + 1} epochs")
+            print(f"Best validation accuracy: {best_acc:.4f} at epoch {best_epoch}")
+            break
     
-    avg_loss = running_loss / total
-    accuracy = correct / total
+    time_elapsed = time.time() - since
+    print(f'\nTraining complete in {time_elapsed // 60:.0f}m {time_elapsed % 60:.0f}s')
+    print(f'Best validation accuracy: {best_acc:.4f} at epoch {best_epoch}')
     
-    return avg_loss, accuracy
+    # Load best model weights
+    model.load_state_dict(best_model_wts)
+    
+    return history, model
