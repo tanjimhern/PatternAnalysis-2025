@@ -227,7 +227,7 @@ if __name__ == "__main__":
     from modules import get_model
     
     # Configuration
-    DATA_PATH = '/content/drive/MyDrive/AD_NC'
+    DATA_PATH = '/home/groups/comp3710/ADNI/AD_NC'
     BATCH_SIZE = 32
     NUM_EPOCHS = 100
     LEARNING_RATE = 1e-4
