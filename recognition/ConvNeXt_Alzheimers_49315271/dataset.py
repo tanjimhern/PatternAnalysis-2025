@@ -75,11 +75,14 @@ def get_data_loaders(data_path, batch_size=32, num_workers=2):
     train_transform = transforms.Compose([
         transforms.Resize((224, 224)),
         transforms.RandomHorizontalFlip(p=0.5),
-        transforms.RandomRotation(10),
-        transforms.ColorJitter(brightness=0.2, contrast=0.2),
+        transforms.RandomRotation(degrees=20),  # Increase from 10
+        transforms.RandomAffine(degrees=0, translate=(0.1, 0.1)),  # Add translation
+        transforms.RandomResizedCrop(224, scale=(0.8, 1.0)),  # Add random crop
+        transforms.ColorJitter(brightness=0.3, contrast=0.3, saturation=0.2),  # Stronger
+        transforms.RandomGrayscale(p=0.1),  # Occasionally convert to grayscale
         transforms.ToTensor(),
-        transforms.Normalize(mean=[0.485, 0.456, 0.406], 
-                           std=[0.229, 0.224, 0.225])
+        transforms.GaussianBlur(kernel_size=3, sigma=(0.1, 2.0)),  # Add blur
+        transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
     ])
     
     # No augmentation for testing
