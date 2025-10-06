@@ -256,7 +256,7 @@ def train_two_stage(model, train_loader, val_loader, num_epochs_frozen=10, num_e
     for param in model.parameters():
         param.requires_grad = True
     
-    optimizer = optim.AdamW(model.parameters(), lr=lr_finetune, weight_decay=0.01)
+    optimizer = optim.AdamW(model.parameters(), lr=lr_finetune, weight_decay=0.05)
     scheduler = CosineAnnealingLR(optimizer, T_max=num_epochs_finetune)
     
     history_stage2, model = train_model(
@@ -304,7 +304,7 @@ if __name__ == "__main__":
     model = get_model(device=DEVICE, pretrained=True, freeze_backbone=False)
     
     # Loss function
-    criterion = nn.CrossEntropyLoss()
+    criterion = nn.CrossEntropyLoss(label_smoothing=0.1)
     
     # Optimizer
     optimizer = optim.AdamW(model.parameters(), lr=LEARNING_RATE, weight_decay=0.01)
