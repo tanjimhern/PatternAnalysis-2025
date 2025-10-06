@@ -194,7 +194,7 @@ if __name__ == "__main__":
     
     # Configuration
     MODEL_PATH = 'best_convnext_model.pth'
-    DATA_PATH = '/content/drive/MyDrive/AD_NC'
+    DATA_PATH = '/home/groups/comp3710/ADNI/AD_NC'
     BATCH_SIZE = 32
     DEVICE = 'cuda' if torch.cuda.is_available() else 'cpu'
     
