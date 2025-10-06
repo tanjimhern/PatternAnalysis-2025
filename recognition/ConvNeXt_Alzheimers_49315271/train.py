@@ -218,6 +218,63 @@ def plot_training_history(history, save_path='training_history.png'):
     print(f"Training history plot saved to {save_path}")
     plt.show()
 
+def train_two_stage(model, train_loader, val_loader, num_epochs_frozen=10, num_epochs_finetune=40, 
+                    lr_frozen=1e-3, lr_finetune=1e-4, device='cuda'):
+    """
+    Two-stage training: freeze backbone then fine-tune
+    
+    Stage 1: Train only classifier with frozen backbone
+    Stage 2: Unfreeze and fine-tune entire model
+    """
+    criterion = nn.CrossEntropyLoss()
+    
+    # STAGE 1: Frozen backbone
+    print("\n" + "="*80)
+    print("STAGE 1: Training classifier with frozen backbone")
+    print("="*80)
+    
+    # Freeze backbone
+    for param in model.model.features.parameters():
+        param.requires_grad = False
+    
+    optimizer = optim.AdamW(filter(lambda p: p.requires_grad, model.parameters()), 
+                           lr=lr_frozen, weight_decay=0.01)
+    scheduler = CosineAnnealingLR(optimizer, T_max=num_epochs_frozen)
+    
+    history_stage1, _ = train_model(
+        model, train_loader, val_loader, criterion, optimizer, scheduler,
+        num_epochs=num_epochs_frozen, device=device, patience=5,
+        save_path='stage1_model.pth'
+    )
+    
+    # STAGE 2: Fine-tune entire model
+    print("\n" + "="*80)
+    print("STAGE 2: Fine-tuning entire model")
+    print("="*80)
+    
+    # Unfreeze all layers
+    for param in model.parameters():
+        param.requires_grad = True
+    
+    optimizer = optim.AdamW(model.parameters(), lr=lr_finetune, weight_decay=0.01)
+    scheduler = CosineAnnealingLR(optimizer, T_max=num_epochs_finetune)
+    
+    history_stage2, model = train_model(
+        model, train_loader, val_loader, criterion, optimizer, scheduler,
+        num_epochs=num_epochs_finetune, device=device, patience=15,
+        save_path='best_convnext_model.pth'
+    )
+    
+    # Combine histories
+    history = {
+        'train_loss': history_stage1['train_loss'] + history_stage2['train_loss'],
+        'train_acc': history_stage1['train_acc'] + history_stage2['train_acc'],
+        'val_loss': history_stage1['val_loss'] + history_stage2['val_loss'],
+        'val_acc': history_stage1['val_acc'] + history_stage2['val_acc'],
+        'lr': history_stage1['lr'] + history_stage2['lr']
+    }
+    
+    return history, model
 
 if __name__ == "__main__":
     """
@@ -257,17 +314,16 @@ if __name__ == "__main__":
     
     # Train model
     print("\nStarting training...\n")
-    history, best_model = train_model(
+    # Use 2-stage training to reduce overfitting
+    history, best_model = train_two_stage(
         model=model,
         train_loader=train_loader,
-        val_loader=test_loader,  # Using test as validation for now
-        criterion=criterion,
-        optimizer=optimizer,
-        scheduler=scheduler,
-        num_epochs=NUM_EPOCHS,
-        device=DEVICE,
-        patience=PATIENCE,
-        save_path='best_convnext_model.pth'
+        val_loader=test_loader,
+        num_epochs_frozen=10,
+        num_epochs_finetune=40,
+        lr_frozen=1e-3,
+        lr_finetune=1e-4,
+        device=DEVICE
     )
     
     # Plot results
