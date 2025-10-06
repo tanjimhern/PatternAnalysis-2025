@@ -33,11 +33,14 @@ class ConvNeXtClassifier(nn.Module):
                 param.requires_grad = False
             print("Frozen backbone layers")
         
-        # Modify classifier head for binary classification
-        # Original classifier: LayerNorm + Flatten + Linear(768, 1000)
+        # Modify classifier head with dropout for regularization
         in_features = self.model.classifier[2].in_features
-        self.model.classifier[2] = nn.Linear(in_features, num_classes)
-        
+        self.model.classifier = nn.Sequential(
+            self.model.classifier[0],  # LayerNorm
+            self.model.classifier[1],  # Flatten
+            nn.Dropout(0.5),           # Added dropout
+            nn.Linear(in_features, num_classes)
+        )
         print(f"Modified classifier: {in_features} -> {num_classes} classes")
     
     def forward(self, x):
