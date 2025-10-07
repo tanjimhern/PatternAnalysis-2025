@@ -159,8 +159,45 @@ def train_model(model, train_loader, val_loader, criterion, optimizer, scheduler
                 'val_loss': val_loss,
             }, save_path)
             print(f"    → New best model saved! Val Acc: {val_acc:.4f}")
+        
+        # Custom stopping: if hit 80%, train 3 more epochs then stop
+        if val_acc >= 0.80:
+            print(f"    ✓ Reached 80% accuracy! Training 3 more epochs then stopping...")
+            remaining_epochs = 3
+            for extra_epoch in range(remaining_epochs):
+                actual_epoch = epoch + extra_epoch + 1
+                if actual_epoch >= num_epochs:
+                    break
+                train_loss, train_acc = train_one_epoch(model, train_loader, criterion, optimizer, device)
+                val_loss, val_acc = validate(model, val_loader, criterion, device)
+                current_lr = optimizer.param_groups[0]['lr']
+                if scheduler is not None:
+                    scheduler.step()
+                
+                history['train_loss'].append(train_loss)
+                history['train_acc'].append(train_acc)
+                history['val_loss'].append(val_loss)
+                history['val_acc'].append(val_acc)
+                history['lr'].append(current_lr)
+                
+                print(f"{actual_epoch:<8} {train_loss:<12.4f} {train_acc:<12.4f} {val_loss:<12.4f} {val_acc:<12.4f} {current_lr:<12.6f}")
+                
+                if val_acc > best_acc:
+                    best_acc = val_acc
+                    best_epoch = actual_epoch
+                    best_model_wts = copy.deepcopy(model.state_dict())
+                    torch.save({...}, save_path)
+                    print(f"    → New best model saved! Val Acc: {val_acc:.4f}")
+            
+            print(f"\nStopping after reaching 80% and training {remaining_epochs} more epochs")
+            break
         else:
             epochs_no_improve += 1
+
+        # Early stopping check
+        if epochs_no_improve >= patience:
+            print(f"\nEarly stopping triggered...")
+            break
         
         # Early stopping check
         if epochs_no_improve >= patience:
@@ -226,7 +263,7 @@ def train_two_stage(model, train_loader, val_loader, num_epochs_frozen=10, num_e
     Stage 1: Train only classifier with frozen backbone
     Stage 2: Unfreeze and fine-tune entire model
     """
-    criterion = nn.CrossEntropyLoss()
+    criterion = nn.CrossEntropyLoss(label_smoothing=0.1)
     
     # STAGE 1: Frozen backbone
     print("\n" + "="*80)
@@ -237,8 +274,7 @@ def train_two_stage(model, train_loader, val_loader, num_epochs_frozen=10, num_e
     for param in model.model.features.parameters():
         param.requires_grad = False
     
-    optimizer = optim.AdamW(filter(lambda p: p.requires_grad, model.parameters()), 
-                           lr=lr_frozen, weight_decay=0.01)
+    optimizer = optim.AdamW(filter(lambda p: p.requires_grad, model.parameters()), lr=lr_frozen, weight_decay=0.1)
     scheduler = CosineAnnealingLR(optimizer, T_max=num_epochs_frozen)
     
     history_stage1, _ = train_model(
@@ -256,7 +292,7 @@ def train_two_stage(model, train_loader, val_loader, num_epochs_frozen=10, num_e
     for param in model.parameters():
         param.requires_grad = True
     
-    optimizer = optim.AdamW(model.parameters(), lr=lr_finetune, weight_decay=0.05)
+    optimizer = optim.AdamW(model.parameters(), lr=lr_finetune, weight_decay=0.1)
     scheduler = CosineAnnealingLR(optimizer, T_max=num_epochs_finetune)
     
     history_stage2, model = train_model(
@@ -304,10 +340,10 @@ if __name__ == "__main__":
     model = get_model(device=DEVICE, pretrained=True, freeze_backbone=False)
     
     # Loss function
-    criterion = nn.CrossEntropyLoss(label_smoothing=0.1)
+    criterion = nn.CrossEntropyLoss()
     
     # Optimizer
-    optimizer = optim.AdamW(model.parameters(), lr=LEARNING_RATE, weight_decay=0.01)
+    optimizer = optim.AdamW(model.parameters(), lr=LEARNING_RATE, weight_decay=0.1)
     
     # Learning rate scheduler
     scheduler = CosineAnnealingLR(optimizer, T_max=NUM_EPOCHS)
