@@ -21,8 +21,7 @@ class ConvNeXtClassifier(nn.Module):
         
         # Load pretrained ConvNeXt-Tiny
         if pretrained:
-            for param in list(self.model.features.parameters())[:100]:
-                param.requires_grad = False
+            self.model = models.convnext_tiny(weights='IMAGENET1K_V1')
             print("Loaded pretrained ConvNeXt-Tiny weights")
         else:
             self.model = models.convnext_tiny(weights=None)
@@ -39,10 +38,11 @@ class ConvNeXtClassifier(nn.Module):
         self.model.classifier = nn.Sequential(
             self.model.classifier[0],  # LayerNorm
             self.model.classifier[1],  # Flatten
-            nn.Dropout(0.7),           # Added dropout
+            nn.Dropout(0.7),           # Dropout for regularization
             nn.Linear(in_features, num_classes)
         )
-        print(f"Modified classifier: {in_features} -> {num_classes} classes")
+        
+        print(f"Modified classifier: {in_features} -> {num_classes} classes with dropout")
     
     def forward(self, x):
         """
