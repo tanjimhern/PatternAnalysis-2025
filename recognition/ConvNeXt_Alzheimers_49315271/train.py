@@ -316,7 +316,7 @@ if __name__ == "__main__":
     """
     Main execution block for training
     """
-    from dataset import get_data_loaders
+    from dataset import get_data_loaders_proper_split
     from modules import get_model
     
     # Configuration
@@ -333,7 +333,18 @@ if __name__ == "__main__":
     
     # Load data
     print("\nLoading data...")
-    train_loader, test_loader = get_data_loaders(DATA_PATH, batch_size=BATCH_SIZE)
+    # NEW CODE - proper train/val/test split:
+    from dataset import get_data_loaders_proper_split
+    train_loader, val_loader, test_loader = get_data_loaders_proper_split(
+        DATA_PATH,
+        batch_size=BATCH_SIZE,
+        val_split=0.2,  # 20% of training data for validation
+        random_seed=42
+    )
+
+    print(f"\n{'='*80}")
+    print("Using proper train/val/test split - test set never seen during training")
+    print(f"{'='*80}\n")
     
     # Create model
     print("\nInitializing model...")
@@ -354,7 +365,7 @@ if __name__ == "__main__":
     history, best_model = train_two_stage(
         model=model,
         train_loader=train_loader,
-        val_loader=test_loader,
+        val_loader=val_loader,
         num_epochs_frozen=10,
         num_epochs_finetune=40,
         lr_frozen=1e-3,
@@ -365,5 +376,17 @@ if __name__ == "__main__":
     # Plot results
     print("\nGenerating training plots...")
     plot_training_history(history)
-    
+
+    # Final evaluation on completely held-out test set
+    print("\n" + "="*80)
+    print("FINAL EVALUATION ON HELD-OUT TEST SET")
+    print("="*80)
+
+    criterion = nn.CrossEntropyLoss(label_smoothing=0.1)
+    test_loss, test_acc = validate(best_model, test_loader, criterion, DEVICE)
+
+    print(f"\nFinal Test Accuracy: {test_acc:.4f} ({test_acc*100:.2f}%)")
+    print(f"Final Test Loss: {test_loss:.4f}")
+    print("\nThis is the TRUE generalization performance (test set never seen during training)")
+
     print("\nTraining complete!")
