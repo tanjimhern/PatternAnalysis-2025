@@ -382,7 +382,7 @@ if __name__ == "__main__":
     print("FINAL EVALUATION ON HELD-OUT TEST SET")
     print("="*80)
 
-    criterion = nn.CrossEntropyLoss(label_smoothing=0.1)
+    criterion = nn.CrossEntropyLoss(label_smoothing=0.2)
     test_loss, test_acc = validate(best_model, test_loader, criterion, DEVICE)
 
     print(f"\nFinal Test Accuracy: {test_acc:.4f} ({test_acc*100:.2f}%)")

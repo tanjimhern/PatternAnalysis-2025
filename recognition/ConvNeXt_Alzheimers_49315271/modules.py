@@ -38,7 +38,7 @@ class ConvNeXtClassifier(nn.Module):
         self.model.classifier = nn.Sequential(
             self.model.classifier[0],  # LayerNorm
             self.model.classifier[1],  # Flatten
-            nn.Dropout(0.7),           # Dropout for regularization
+            nn.Dropout(0.5),           # Dropout for regularization
             nn.Linear(in_features, num_classes)
         )
         
