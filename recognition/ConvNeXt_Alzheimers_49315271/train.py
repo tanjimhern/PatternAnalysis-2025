@@ -1,5 +1,5 @@
 # train.py
-# Training script for Alzheimer's classification with ConvNeXt
+# Training script for Alzheimer's classification with ConvNeXt and Focal Loss
 
 import torch
 import torch.nn as nn
@@ -89,7 +89,7 @@ def train_model(model, train_loader, val_loader, criterion, optimizer, scheduler
         model: ConvNeXt model
         train_loader: Training data loader
         val_loader: Validation data loader
-        criterion: Loss function
+        criterion: Loss function (Focal Loss)
         optimizer: Optimizer
         scheduler: Learning rate scheduler
         num_epochs: Maximum number of epochs
@@ -159,45 +159,8 @@ def train_model(model, train_loader, val_loader, criterion, optimizer, scheduler
                 'val_loss': val_loss,
             }, save_path)
             print(f"    → New best model saved! Val Acc: {val_acc:.4f}")
-        
-        # Custom stopping: if hit 80%, train 3 more epochs then stop
-        if val_acc >= 0.80:
-            print(f"    ✓ Reached 80% accuracy! Training 3 more epochs then stopping...")
-            remaining_epochs = 3
-            for extra_epoch in range(remaining_epochs):
-                actual_epoch = epoch + extra_epoch + 1
-                if actual_epoch >= num_epochs:
-                    break
-                train_loss, train_acc = train_one_epoch(model, train_loader, criterion, optimizer, device)
-                val_loss, val_acc = validate(model, val_loader, criterion, device)
-                current_lr = optimizer.param_groups[0]['lr']
-                if scheduler is not None:
-                    scheduler.step()
-                
-                history['train_loss'].append(train_loss)
-                history['train_acc'].append(train_acc)
-                history['val_loss'].append(val_loss)
-                history['val_acc'].append(val_acc)
-                history['lr'].append(current_lr)
-                
-                print(f"{actual_epoch:<8} {train_loss:<12.4f} {train_acc:<12.4f} {val_loss:<12.4f} {val_acc:<12.4f} {current_lr:<12.6f}")
-                
-                if val_acc > best_acc:
-                    best_acc = val_acc
-                    best_epoch = actual_epoch
-                    best_model_wts = copy.deepcopy(model.state_dict())
-                    torch.save({...}, save_path)
-                    print(f"    → New best model saved! Val Acc: {val_acc:.4f}")
-            
-            print(f"\nStopping after reaching 80% and training {remaining_epochs} more epochs")
-            break
         else:
             epochs_no_improve += 1
-
-        # Early stopping check
-        if epochs_no_improve >= patience:
-            print(f"\nEarly stopping triggered...")
-            break
         
         # Early stopping check
         if epochs_no_improve >= patience:
@@ -211,6 +174,76 @@ def train_model(model, train_loader, val_loader, criterion, optimizer, scheduler
     
     # Load best model weights
     model.load_state_dict(best_model_wts)
+    
+    return history, model
+
+
+def train_two_stage(model, train_loader, val_loader, num_epochs_frozen=10, num_epochs_finetune=10, 
+                    lr_frozen=1e-3, lr_finetune=1e-4, device='cuda', focal_gamma=2.0):
+    """
+    Two-stage training: freeze backbone then fine-tune
+    Now uses Focal Loss to address class imbalance
+    
+    Stage 1: Train only classifier with frozen backbone (10 epochs)
+    Stage 2: Unfreeze and fine-tune entire model (10 epochs)
+    
+    Args:
+        focal_gamma: Gamma parameter for Focal Loss (2.0 is standard, higher = more focus on hard examples)
+    """
+    from modules import get_focal_loss
+    
+    # Use Focal Loss instead of CrossEntropyLoss
+    # Gamma = 2.0 is standard, can increase to 3.0 or 4.0 for more focus on hard examples
+    criterion = get_focal_loss(alpha=2.0, gamma=2.0)
+    
+    print(f"\nUsing Focal Loss with gamma={focal_gamma}")
+    print("This will help fix the class imbalance (NC: 93% recall, AD: 55% recall)")
+    
+    # STAGE 1: Frozen backbone
+    print("\n" + "="*80)
+    print("STAGE 1: Training classifier with frozen backbone (10 epochs)")
+    print("="*80)
+    
+    # Freeze backbone
+    for param in model.model.features.parameters():
+        param.requires_grad = False
+    
+    optimizer = optim.AdamW(filter(lambda p: p.requires_grad, model.parameters()), 
+                           lr=lr_frozen, weight_decay=0.1)
+    scheduler = CosineAnnealingLR(optimizer, T_max=num_epochs_frozen)
+    
+    history_stage1, _ = train_model(
+        model, train_loader, val_loader, criterion, optimizer, scheduler,
+        num_epochs=num_epochs_frozen, device=device, patience=5,
+        save_path='stage1_model.pth'
+    )
+    
+    # STAGE 2: Fine-tune entire model
+    print("\n" + "="*80)
+    print("STAGE 2: Fine-tuning entire model (10 epochs)")
+    print("="*80)
+    
+    # Unfreeze all layers
+    for param in model.parameters():
+        param.requires_grad = True
+    
+    optimizer = optim.AdamW(model.parameters(), lr=lr_finetune, weight_decay=0.1)
+    scheduler = CosineAnnealingLR(optimizer, T_max=num_epochs_finetune)
+    
+    history_stage2, model = train_model(
+        model, train_loader, val_loader, criterion, optimizer, scheduler,
+        num_epochs=num_epochs_finetune, device=device, patience=8,
+        save_path='best_convnext_model.pth'
+    )
+    
+    # Combine histories
+    history = {
+        'train_loss': history_stage1['train_loss'] + history_stage2['train_loss'],
+        'train_acc': history_stage1['train_acc'] + history_stage2['train_acc'],
+        'val_loss': history_stage1['val_loss'] + history_stage2['val_loss'],
+        'val_acc': history_stage1['val_acc'] + history_stage2['val_acc'],
+        'lr': history_stage1['lr'] + history_stage2['lr']
+    }
     
     return history, model
 
@@ -255,138 +288,68 @@ def plot_training_history(history, save_path='training_history.png'):
     print(f"Training history plot saved to {save_path}")
     plt.show()
 
-def train_two_stage(model, train_loader, val_loader, num_epochs_frozen=10, num_epochs_finetune=40, 
-                    lr_frozen=1e-3, lr_finetune=1e-4, device='cuda'):
-    """
-    Two-stage training: freeze backbone then fine-tune
-    
-    Stage 1: Train only classifier with frozen backbone
-    Stage 2: Unfreeze and fine-tune entire model
-    """
-    criterion = nn.CrossEntropyLoss(label_smoothing=0.1)
-    
-    # STAGE 1: Frozen backbone
-    print("\n" + "="*80)
-    print("STAGE 1: Training classifier with frozen backbone")
-    print("="*80)
-    
-    # Freeze backbone
-    for param in model.model.features.parameters():
-        param.requires_grad = False
-    
-    optimizer = optim.AdamW(filter(lambda p: p.requires_grad, model.parameters()), lr=lr_frozen, weight_decay=0.1)
-    scheduler = CosineAnnealingLR(optimizer, T_max=num_epochs_frozen)
-    
-    history_stage1, _ = train_model(
-        model, train_loader, val_loader, criterion, optimizer, scheduler,
-        num_epochs=num_epochs_frozen, device=device, patience=5,
-        save_path='stage1_model.pth'
-    )
-    
-    # STAGE 2: Fine-tune entire model
-    print("\n" + "="*80)
-    print("STAGE 2: Fine-tuning entire model")
-    print("="*80)
-    
-    # Unfreeze all layers
-    for param in model.parameters():
-        param.requires_grad = True
-    
-    optimizer = optim.AdamW(model.parameters(), lr=lr_finetune, weight_decay=0.1)
-    scheduler = CosineAnnealingLR(optimizer, T_max=num_epochs_finetune)
-    
-    history_stage2, model = train_model(
-        model, train_loader, val_loader, criterion, optimizer, scheduler,
-        num_epochs=num_epochs_finetune, device=device, patience=15,
-        save_path='best_convnext_model.pth'
-    )
-    
-    # Combine histories
-    history = {
-        'train_loss': history_stage1['train_loss'] + history_stage2['train_loss'],
-        'train_acc': history_stage1['train_acc'] + history_stage2['train_acc'],
-        'val_loss': history_stage1['val_loss'] + history_stage2['val_loss'],
-        'val_acc': history_stage1['val_acc'] + history_stage2['val_acc'],
-        'lr': history_stage1['lr'] + history_stage2['lr']
-    }
-    
-    return history, model
 
 if __name__ == "__main__":
     """
     Main execution block for training
     """
-    from dataset import get_data_loaders_proper_split
+    from dataset import get_data_loaders
     from modules import get_model
     
     # Configuration
     DATA_PATH = '/home/groups/comp3710/ADNI/AD_NC'
     BATCH_SIZE = 32
-    NUM_EPOCHS = 100
-    LEARNING_RATE = 1e-4
-    PATIENCE = 10
     DEVICE = 'cuda' if torch.cuda.is_available() else 'cpu'
     
+    # Focal Loss gamma parameter
+    # 2.0 = standard (recommended starting point)
+    # 3.0 = more focus on hard examples
+    # 4.0 = even more focus on hard examples
+    FOCAL_GAMMA = 2.0
+    
     print("="*80)
-    print("ADNI Alzheimer's Classification Training")
+    print("ADNI Alzheimer's Classification Training with Focal Loss")
     print("="*80)
     
-    # Load data
+    # Load data with proper train/val split
     print("\nLoading data...")
-    # NEW CODE - proper train/val/test split:
-    from dataset import get_data_loaders_proper_split
-    train_loader, val_loader, test_loader = get_data_loaders_proper_split(
-        DATA_PATH,
+    train_loader, val_loader, test_loader = get_data_loaders(
+        DATA_PATH, 
         batch_size=BATCH_SIZE,
-        val_split=0.2,  # 20% of training data for validation
+        use_val_split=True,
+        val_split=0.2,
         random_seed=42
     )
-
-    print(f"\n{'='*80}")
-    print("Using proper train/val/test split - test set never seen during training")
-    print(f"{'='*80}\n")
     
     # Create model
     print("\nInitializing model...")
     model = get_model(device=DEVICE, pretrained=True, freeze_backbone=False)
     
-    # Loss function
-    criterion = nn.CrossEntropyLoss()
+    # Use 2-stage training with Focal Loss
+    print("\nStarting training with Focal Loss...")
+    print(f"Stage 1: 10 epochs (frozen backbone)")
+    print(f"Stage 2: 10 epochs (fine-tuning)")
+    print(f"Focal Loss gamma: {FOCAL_GAMMA}\n")
     
-    # Optimizer
-    optimizer = optim.AdamW(model.parameters(), lr=LEARNING_RATE, weight_decay=0.1)
-    
-    # Learning rate scheduler
-    scheduler = CosineAnnealingLR(optimizer, T_max=NUM_EPOCHS)
-    
-    # Train model
-    print("\nStarting training...\n")
-    # Use 2-stage training to reduce overfitting
     history, best_model = train_two_stage(
         model=model,
         train_loader=train_loader,
         val_loader=val_loader,
         num_epochs_frozen=10,
-        num_epochs_finetune=40,
+        num_epochs_finetune=10,
         lr_frozen=1e-3,
         lr_finetune=1e-4,
-        device=DEVICE
+        device=DEVICE,
+        focal_gamma=FOCAL_GAMMA
     )
     
     # Plot results
     print("\nGenerating training plots...")
     plot_training_history(history)
-
-    # Final evaluation on completely held-out test set
+    
     print("\n" + "="*80)
-    print("FINAL EVALUATION ON HELD-OUT TEST SET")
+    print("Training complete!")
     print("="*80)
+    print(f"\nBest model saved as: best_convnext_model.pth")
+    print(f"Now run predict.py to evaluate on test set!")
 
-    criterion = nn.CrossEntropyLoss(label_smoothing=0.2)
-    test_loss, test_acc = validate(best_model, test_loader, criterion, DEVICE)
-
-    print(f"\nFinal Test Accuracy: {test_acc:.4f} ({test_acc*100:.2f}%)")
-    print(f"Final Test Loss: {test_loss:.4f}")
-    print("\nThis is the TRUE generalization performance (test set never seen during training)")
-
-    print("\nTraining complete!")
