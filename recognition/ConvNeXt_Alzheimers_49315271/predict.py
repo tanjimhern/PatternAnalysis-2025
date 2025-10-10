@@ -204,7 +204,7 @@ if __name__ == "__main__":
     
     # Load data
     print("\nLoading test data...")
-    _, test_loader = get_data_loaders(DATA_PATH, batch_size=BATCH_SIZE)
+    _,_, test_loader = get_data_loaders(DATA_PATH, batch_size=BATCH_SIZE,use_val_split=True,val_split=0.2)
     
     # Load trained model
     print("\nLoading trained model...")
