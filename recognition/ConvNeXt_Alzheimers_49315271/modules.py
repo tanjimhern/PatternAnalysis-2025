@@ -11,13 +11,17 @@ class FocalLoss(nn.Module):
     """
     Focal Loss for addressing class imbalance
     
-    Focal Loss = -alpha * (1 - p_t)^gamma * log(p_t)
+    Formula: Focal Loss = -alpha * (1 - p_t) to the power of gamma * log(p_t)
     
-    This loss focuses on hard-to-classify examples and reduces the weight
-    of easy examples. Perfect for when your model is biased towards one class.
+    Where:
+    - p_t is the probability of the correct class
+    - gamma controls how much to focus on hard examples (default: 2.0)
+    - alpha controls class weighting (default: 1.0)
+    
+    This loss helps when model is biased towards one class (e.g., NC: 96% recall, AD: 58% recall)
     
     Args:
-        alpha: Weighting factor for classes (can be a scalar or tensor)
+        alpha: Weighting factor for classes
         gamma: Focusing parameter (higher = more focus on hard examples)
         reduction: 'mean', 'sum', or 'none'
     """
@@ -33,12 +37,15 @@ class FocalLoss(nn.Module):
             inputs: Model predictions (logits), shape (N, C)
             targets: Ground truth labels, shape (N,)
         """
-        # Get probabilities
+        # Calculate cross entropy loss
         ce_loss = F.cross_entropy(inputs, targets, reduction='none')
-        p_t = torch.exp(-ce_loss)  # p_t = probability of correct class
+        
+        # Get probability of correct class
+        p_t = torch.exp(-ce_loss)
         
         # Calculate focal loss
-        focal_loss = self.alpha * ((1 - p_t) ** self.gamma) * ce_loss
+        # (1 - p_t) to the power of gamma makes easy examples have lower loss
+        focal_loss = self.alpha * torch.pow((1 - p_t), self.gamma) * ce_loss
         
         if self.reduction == 'mean':
             return focal_loss.mean()
@@ -76,16 +83,18 @@ class ConvNeXtClassifier(nn.Module):
                 param.requires_grad = False
             print("Frozen backbone layers")
         
-        # Modify classifier head with dropout for regularization
+        # Modify classifier head
+        # Original classifier has 3 layers: [LayerNorm, Flatten, Linear]
+        # replace it with: [LayerNorm, Flatten, Dropout, Linear]
         in_features = self.model.classifier[2].in_features
         self.model.classifier = nn.Sequential(
             self.model.classifier[0],  # LayerNorm
             self.model.classifier[1],  # Flatten
-            nn.Dropout(0.7),           # Keep dropout at 0.7 (user knows their data)
+            nn.Dropout(0.6),           # Dropout for regularization
             nn.Linear(in_features, num_classes)
         )
         
-        print(f"Modified classifier: {in_features} -> {num_classes} classes with dropout")
+        print(f"Modified classifier: {in_features} -> {num_classes} classes with dropout=0.7")
     
     def forward(self, x):
         """
@@ -110,8 +119,8 @@ def get_model(device='cuda', pretrained=True, freeze_backbone=False):
     
     Args:
         device: Device to load model on ('cuda' or 'cpu')
-        pretrained: Use pretrained weights
-        freeze_backbone: Freeze feature extraction layers
+        pretrained: Use pretrained weights (True recommended)
+        freeze_backbone: Freeze feature extraction layers (for stage 1 training)
     
     Returns:
         model: ConvNeXt model ready for training
@@ -141,7 +150,8 @@ def get_focal_loss(alpha=1.0, gamma=2.0):
     
     Args:
         alpha: Weighting factor (1.0 = equal weight to both classes)
-        gamma: Focusing parameter (2.0 is standard, higher = more focus on hard examples)
+        gamma: Focusing parameter (2.0 is standard)
+               - Higher gamma = more focus on hard-to-classify examples
     
     Returns:
         Focal Loss criterion
