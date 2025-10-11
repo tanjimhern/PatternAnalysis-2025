@@ -16,7 +16,7 @@ def load_trained_model(model_path, device='cuda'):
     Load trained model from checkpoint
     
     Args:
-        model_path: Path to saved model checkpoint
+        model_path: Path to saved model checkpoint (.pth file)
         device: Device to load model on
     
     Returns:
@@ -43,10 +43,15 @@ def evaluate_model(model, test_loader, device='cuda'):
     """
     Evaluate model on test set
     
+    Args:
+        model: Trained ConvNeXt model
+        test_loader: Test data loader
+        device: Device
+    
     Returns:
-        all_preds: All predictions
-        all_labels: All true labels
-        all_probs: All prediction probabilities
+        all_preds: Predicted labels
+        all_labels: True labels
+        all_probs: Prediction probabilities
     """
     model.eval()
     all_preds = []
@@ -60,10 +65,12 @@ def evaluate_model(model, test_loader, device='cuda'):
             images = images.to(device)
             labels = labels.to(device)
             
+            # Forward pass
             outputs = model(images)
             probs = torch.softmax(outputs, dim=1)
             _, preds = torch.max(outputs, 1)
             
+            # Collect results
             all_preds.extend(preds.cpu().numpy())
             all_labels.extend(labels.cpu().numpy())
             all_probs.extend(probs.cpu().numpy())
@@ -82,6 +89,8 @@ def evaluate_model(model, test_loader, device='cuda'):
 def plot_confusion_matrix(y_true, y_pred, save_path='confusion_matrix.png'):
     """
     Plot confusion matrix
+    
+    Shows how many samples were correctly/incorrectly classified
     """
     cm = confusion_matrix(y_true, y_pred)
     
@@ -103,10 +112,14 @@ def plot_confusion_matrix(y_true, y_pred, save_path='confusion_matrix.png'):
 def plot_roc_curve(y_true, y_probs, save_path='roc_curve.png'):
     """
     Plot ROC curve
+    
+    Shows trade-off between true positive rate and false positive rate
+    AUC (Area Under Curve) = measure of model performance (higher is better)
     """
     # Get probabilities for positive class (AD)
     y_probs_ad = y_probs[:, 1]
     
+    # Calculate ROC curve
     fpr, tpr, thresholds = roc_curve(y_true, y_probs_ad)
     roc_auc = auc(fpr, tpr)
     
@@ -132,6 +145,9 @@ def plot_roc_curve(y_true, y_probs, save_path='roc_curve.png'):
 def visualize_predictions(model, test_loader, device='cuda', num_samples=16):
     """
     Visualize sample predictions
+    
+    Shows actual brain images with predicted and true labels
+    Green = correct prediction, Red = incorrect prediction
     """
     model.eval()
     
@@ -160,8 +176,9 @@ def visualize_predictions(model, test_loader, device='cuda', num_samples=16):
         img = images[i]
         
         # Denormalize image for display
-        mean = torch.tensor([0.485, 0.456, 0.406]).view(3, 1, 1)
-        std = torch.tensor([0.229, 0.224, 0.225]).view(3, 1, 1)
+        # Reverse ADNI normalization
+        mean = torch.tensor([0.115, 0.115, 0.115]).view(3, 1, 1)
+        std = torch.tensor([0.225, 0.225, 0.225]).view(3, 1, 1)
         img = img * std + mean
         img = torch.clamp(img, 0, 1)
         
@@ -176,6 +193,7 @@ def visualize_predictions(model, test_loader, device='cuda', num_samples=16):
         pred_label = class_names[preds[i]]
         confidence = probs[i][preds[i]] * 100
         
+        # Green if correct, red if wrong
         color = 'green' if labels[i] == preds[i] else 'red'
         axes[i].set_title(f'True: {true_label}\nPred: {pred_label}\nConf: {confidence:.1f}%',
                          color=color, fontsize=9)
@@ -202,9 +220,9 @@ if __name__ == "__main__":
     print("ADNI Alzheimer's Classification - Prediction & Evaluation")
     print("="*80)
     
-    # Load data
+    # Load test data
     print("\nLoading test data...")
-    _,_, test_loader = get_data_loaders(DATA_PATH, batch_size=BATCH_SIZE,use_val_split=True,val_split=0.2)
+    _, test_loader = get_data_loaders(DATA_PATH, batch_size=BATCH_SIZE)
     
     # Load trained model
     print("\nLoading trained model...")
@@ -215,6 +233,7 @@ if __name__ == "__main__":
     y_pred, y_true, y_probs = evaluate_model(model, test_loader, device=DEVICE)
     
     # Classification report
+    # Shows precision, recall, f1-score for each class
     print("\n" + "="*80)
     print("Classification Report:")
     print("="*80)
