@@ -93,8 +93,7 @@ def get_data_loaders(data_path, batch_size=32, num_workers=2):
     print("Using ADNI-specific normalization:")
     print(f"  Mean: {ADNI_MEAN}")
     print(f"  Std:  {ADNI_STD}")
-    print("\n⚠️  WARNING: Using test set as validation!")
-    print("This is NOT standard practice but necessary due to distribution shift.")
+    print("Using test image for validation due to distribution shift.")
     print("="*80 + "\n")
     
     # Training augmentation
