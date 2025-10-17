@@ -382,86 +382,6 @@ def visualize_sample_predictions(model, test_loader, device='cuda', num_samples=
     print(f"✓ Sample predictions saved to {save_path}")
     plt.close()
 
-
-def generate_detailed_report(y_true, y_pred, y_probs, save_path='detailed_report.txt'):
-    """
-    Generate a detailed text report with all metrics.
-    
-    Args:
-        y_true: True labels
-        y_pred: Predicted labels
-        y_probs: Prediction probabilities
-        save_path: Path to save the report
-    """
-    with open(save_path, 'w') as f:
-        f.write("="*80 + "\n")
-        f.write("DETAILED EVALUATION REPORT\n")
-        f.write("="*80 + "\n\n")
-        
-        # Overall accuracy
-        accuracy = (y_pred == y_true).sum() / len(y_true)
-        f.write(f"Overall Test Accuracy: {accuracy:.4f} ({accuracy*100:.2f}%)\n\n")
-        
-        # Classification report
-        f.write("Classification Report:\n")
-        f.write("-"*80 + "\n")
-        report = classification_report(
-            y_true, y_pred,
-            target_names=['NC (Normal)', 'AD (Alzheimer)'],
-            digits=4
-        )
-        f.write(report)
-        f.write("\n")
-        
-        # Confusion matrix
-        cm = confusion_matrix(y_true, y_pred)
-        f.write("Confusion Matrix:\n")
-        f.write("-"*80 + "\n")
-        f.write(f"{'':20} {'Predicted NC':>15} {'Predicted AD':>15}\n")
-        f.write(f"{'Actual NC':20} {cm[0,0]:>15} {cm[0,1]:>15}\n")
-        f.write(f"{'Actual AD':20} {cm[1,0]:>15} {cm[1,1]:>15}\n\n")
-        
-        # Detailed metrics
-        f.write("Detailed Metrics:\n")
-        f.write("-"*80 + "\n")
-        f.write(f"True Negatives (NC correctly classified):   {cm[0,0]}\n")
-        f.write(f"False Positives (NC misclassified as AD):   {cm[0,1]}\n")
-        f.write(f"False Negatives (AD misclassified as NC):   {cm[1,0]}\n")
-        f.write(f"True Positives (AD correctly classified):   {cm[1,1]}\n\n")
-        
-        # Sensitivity and Specificity
-        sensitivity = cm[1,1] / (cm[1,1] + cm[1,0])  # Recall for AD
-        specificity = cm[0,0] / (cm[0,0] + cm[0,1])  # Recall for NC
-        f.write(f"Sensitivity (True Positive Rate):           {sensitivity:.4f}\n")
-        f.write(f"Specificity (True Negative Rate):           {specificity:.4f}\n\n")
-        
-        # ROC AUC
-        roc_auc = roc_auc_score(y_true, y_probs[:, 1])
-        f.write(f"ROC AUC Score:                              {roc_auc:.4f}\n\n")
-        
-        # Confidence statistics
-        f.write("Prediction Confidence Statistics:\n")
-        f.write("-"*80 + "\n")
-        correct_mask = y_true == y_pred
-        correct_conf = np.max(y_probs[correct_mask], axis=1)
-        incorrect_conf = np.max(y_probs[~correct_mask], axis=1) if (~correct_mask).sum() > 0 else np.array([])
-        
-        f.write(f"Correct predictions:   Mean={np.mean(correct_conf):.4f}, "
-               f"Std={np.std(correct_conf):.4f}, "
-               f"Min={np.min(correct_conf):.4f}, "
-               f"Max={np.max(correct_conf):.4f}\n")
-        
-        if len(incorrect_conf) > 0:
-            f.write(f"Incorrect predictions: Mean={np.mean(incorrect_conf):.4f}, "
-                   f"Std={np.std(incorrect_conf):.4f}, "
-                   f"Min={np.min(incorrect_conf):.4f}, "
-                   f"Max={np.max(incorrect_conf):.4f}\n")
-        
-        f.write("\n" + "="*80 + "\n")
-    
-    print(f"✓ Detailed report saved to {save_path}")
-
-
 if __name__ == "__main__":
     """
     Main execution block.
@@ -529,10 +449,6 @@ if __name__ == "__main__":
     visualize_sample_predictions(model, test_loader, device=DEVICE, 
                                  num_samples=16, save_path='sample_predictions.png')
     
-    # 5. Detailed text report
-    print("\n5. Generating detailed text report...")
-    generate_detailed_report(y_true, y_pred, y_probs, save_path='detailed_report.txt')
-    
     # Final summary
     print("\n" + "="*80)
     print("VISUALIZATION COMPLETE")
@@ -542,6 +458,4 @@ if __name__ == "__main__":
     print("  - roc_curve.png")
     print("  - per_class_metrics.png")
     print("  - sample_predictions.png")
-    print("  - detailed_report.txt")
-    print("\nThese files can be included in your README.md documentation.")
     print("="*80)
