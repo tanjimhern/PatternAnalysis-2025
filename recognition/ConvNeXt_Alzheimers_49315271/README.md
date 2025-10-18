@@ -40,7 +40,7 @@ The model uses a **two-stage training strategy**:
 - **Heavy Data Augmentation:** Geometric and intensity transforms to improve generalization
 - **High Dropout (p=0.7):** Strong regularization in classifier head
 
-![Training History](training_history.png)
+![Training History](image/training_history.png)
 
 ## Data Preprocessing
 
@@ -128,7 +128,7 @@ Test Data (from test folder - held out):
 
 **Confusion Matrix:**
 
-![Confusion Matrix](confusion_matrix.png)
+![Confusion Matrix](image/confusion_matrix.png)
 
 **Key Observations:**
 - High NC recall (97.97%) but lower AD recall (56.68%)
@@ -138,7 +138,7 @@ Test Data (from test folder - held out):
 
 ### ROC Curve
 
-![ROC Curve](roc_curve.png)
+![ROC Curve](image/roc_curve.png)
 
 The ROC curve shows the model's ability to discriminate between AD and NC cases 
 across different decision thresholds. The AUC of **0.849** indicates strong 
@@ -147,7 +147,7 @@ the model has good separability between classes - it can rank predictions well
 even though the fixed threshold yields 77.51% accuracy.
 
 ### Sample Predictions
-![Sample Predictions](sample_predictions.png)
+![Sample Predictions](image/sample_predictions.png)
 
 The visualization shows 16 random test samples with their predictions. Green text 
 indicates correct predictions, red text indicates errors. This particular batch 
@@ -156,3 +156,121 @@ are false negatives** (AD cases predicted as NC) with zero false positives. This
 extreme pattern strongly demonstrates the model's conservative bias toward NC 
 predictions, consistent with the confusion matrix showing 1,932 false negatives 
 versus only 92 false positives on the full test set.
+
+## Analysis
+
+**Domain Shift:** The significant gap between validation accuracy (99.47%) and test accuracy (77.51%) indicates a distribution shift between training and test sets. This is common in medical imaging where data may originate from different MRI scanners, acquisition protocols, or patient populations.
+
+**Model Behavior:** The model shows a bias toward predicting NC, resulting in high sensitivity for normal cases but lower sensitivity for AD cases. The very high AD precision (96.49%) suggests that when the model does predict AD, it is highly confident and usually correct.
+
+**Strengths:**
+- Excellent discriminative ability (AUC 0.849)
+- Very low false positive rate (2%)
+- Robust methodology with proper data splits
+
+**Limitations:**
+- Misses 43% of AD cases (false negatives)
+- Domain shift reduces generalization to test distribution
+- Conservative prediction bias
+
+## Dependencies
+
+### Required Packages
+```
+Python >= 3.9
+torch >= 2.0.0
+torchvision >= 0.15.0
+numpy >= 1.24.0
+matplotlib >= 3.7.0
+seaborn >= 0.12.0
+scikit-learn >= 1.3.0
+Pillow >= 9.5.0
+```
+
+### Development Environment
+
+This project was developed with:
+```
+Python:        3.9.23
+PyTorch:       2.5.1
+torchvision:   0.20.1
+NumPy:         1.26.4
+Matplotlib:    3.9.2
+Seaborn:       0.13.2
+scikit-learn:  1.6.1
+Pillow:        11.3.0
+```
+
+### Training Environment (Rangpur HPC)
+
+Training was performed on:
+```
+GPU:           NVIDIA A100-PCIE-40GB
+CUDA:          Available (CUDA 11.8)
+Memory:        40GB GPU memory
+Training time: ~2 hours (13 min Stage 1 + 103 min Stage 2)
+```
+
+### Installation
+
+Install all dependencies:
+```bash
+pip install torch torchvision numpy matplotlib seaborn scikit-learn Pillow
+```
+
+**Note:** CUDA/GPU is required for training but not for running predictions on a pre-trained model.
+
+### File Structure
+```
+ConvNeXt_Alzheimers_49315271/
+├── dataset.py          # Data loading and augmentation
+├── modules.py          # Model architecture and loss functions  
+├── train.py            # Training script with two-stage approach
+├── predict.py          # Evaluation and visualization
+└── README.md           # Documentation
+```
+
+### Training
+```bash
+python train.py
+```
+
+**Configuration (in train.py):**
+- Data path: `/home/groups/comp3710/ADNI/AD_NC`
+- Batch size: 32
+- Validation split: 20%
+- Model: ConvNeXt-Small
+- Dropout: 0.7
+- MixUp alpha: 0.4
+- Label smoothing: 0.15
+- Stage 1: 15 epochs, LR=1e-3
+- Stage 2: 50 epochs, LR=1e-4
+
+**Outputs:**
+- `best_model.pth` - Best model checkpoint (based on validation accuracy)
+- `stage1_checkpoint.pth` - Stage 1 checkpoint
+- `training_history.png` - Loss and accuracy curves
+
+## Reproducibility
+
+**To reproduce results:**
+1. Use random seed: 42
+2. Apply same 80/20 stratified split
+3. Use ADNI normalization: mean=[0.115, 0.115, 0.115], std=[0.225, 0.225, 0.225]
+4. Train with specified hyperparameters
+5. Trained on Rangpur with NVIDIA A100 GPU with CUDA support
+
+**Note:** Results may vary slightly (±1-2%) due to GPU/hardware differences and PyTorch non-determinism.
+
+## AI Acknowledgement
+
+This project was developed with assistance from AI tools (Claude by Anthropic) in accordance with course policy. AI was used for:
+- Learning PyTorch and deep learning best practices
+- Code structure and documentation guidance
+- Debugging assistance and methodology discussion
+
+All design decisions, implementation, training, analysis are the my decision, AI was used as a learning assistant, not a replacement for understanding.
+## Author
+
+Name: Jim Hern Tan / Student ID: 49315271
+Course: COMP3710 Pattern Recognition and Analysis  
