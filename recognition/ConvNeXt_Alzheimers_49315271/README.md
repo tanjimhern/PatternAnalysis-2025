@@ -40,7 +40,7 @@ The model uses a **two-stage training strategy**:
 - **Heavy Data Augmentation:** Geometric and intensity transforms to improve generalization
 - **High Dropout (p=0.7):** Strong regularization in classifier head
 
-![Training History](image/training_history.png)
+![Training History](./image/training_history.png)
 
 ## Data Preprocessing
 
@@ -128,7 +128,7 @@ Test Data (from test folder - held out):
 
 **Confusion Matrix:**
 
-![Confusion Matrix](image/confusion_matrix.png)
+![Confusion Matrix](./image/confusion_matrix.png)
 
 **Key Observations:**
 - High NC recall (97.97%) but lower AD recall (56.68%)
@@ -138,7 +138,7 @@ Test Data (from test folder - held out):
 
 ### ROC Curve
 
-![ROC Curve](image/roc_curve.png)
+![ROC Curve](./image/roc_curve.png)
 
 The ROC curve shows the model's ability to discriminate between AD and NC cases 
 across different decision thresholds. The AUC of **0.849** indicates strong 
@@ -147,7 +147,7 @@ the model has good separability between classes - it can rank predictions well
 even though the fixed threshold yields 77.51% accuracy.
 
 ### Sample Predictions
-![Sample Predictions](image/sample_predictions.png)
+![Sample Predictions](./image/sample_predictions.png)
 
 The visualization shows 16 random test samples with their predictions. Green text 
 indicates correct predictions, red text indicates errors. This particular batch 
@@ -266,7 +266,7 @@ python train.py
 
 This project was developed with assistance from AI tools (Claude by Anthropic) in accordance with course policy. AI was used for:
 - Learning PyTorch and deep learning best practices
-- Code structure and documentation guidance
+- Code structure and documentation guidance (polish grammar for clarity)
 - Debugging assistance and methodology discussion
 
 All design decisions, implementation, training, analysis are the my decision, AI was used as a learning assistant, not a replacement for understanding.
